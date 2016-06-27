@@ -131,7 +131,9 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 
 	for handlerName, s3def := range r.Backends.S3 {
 		s3def.finalize()
-		r.addHandler(handlerName, s3def)
+		if err := r.addHandler(handlerName, s3def); err != nil {
+			return nil, handlerError(handlerName, err)
+		}
 	}
 
 	for handlerName, httpDef := range r.Backends.HTTP {
@@ -139,14 +141,25 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 			return nil, handlerError(handlerName, err)
 		}
 
-		r.addHandler(handlerName, httpDef)
+		if err := r.addHandler(handlerName, httpDef); err != nil {
+			return nil, handlerError(handlerName, err)
+		}
 	}
 
 	for handlerName, authDef := range r.Authentication {
 		authDef.r = r
-		authDef.finalize()
-		r.addAuthenticator(handlerName, &authDef)
-		r.addHandler(handlerName, &authDef)
+
+		if err := authDef.finalize(); err != nil {
+			return nil, handlerError(handlerName, err)
+		}
+
+		if err := r.addAuthenticator(handlerName, &authDef); err != nil {
+			return nil, handlerError(handlerName, err)
+		}
+
+		if err := r.addHandler(handlerName, &authDef); err != nil {
+			return nil, handlerError(handlerName, err)
+		}
 	}
 
 	if r.Domains == nil {
