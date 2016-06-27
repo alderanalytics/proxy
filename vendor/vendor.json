@@ -21,6 +21,16 @@
 			"path": "github.com/vaughan0/go-ini",
 			"revision": "a98ad7ee00ec53921f08832bc06ecf7fd600e6a1",
 			"revisionTime": "2013-09-23T16:52:12+02:00"
+		},
+		{
+			"path": "golang.org/x/crypto/bcrypt",
+			"revision": "5dc8cb4b8a8eb076cbb5a06bc3b8682c15bdbbd3",
+			"revisionTime": "2016-02-25T15:07:55+01:00"
+		},
+		{
+			"path": "golang.org/x/crypto/blowfish",
+			"revision": "5dc8cb4b8a8eb076cbb5a06bc3b8682c15bdbbd3",
+			"revisionTime": "2016-02-25T15:07:55+01:00"
 		}
 	]
 }

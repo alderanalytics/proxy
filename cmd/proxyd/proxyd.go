@@ -7,7 +7,7 @@ import (
 	"path"
 
 	"crypto/tls"
-	"github.com/alderanalytics/proxy/router"
+	"github.com/alderanalytics/proxyd/router"
 )
 
 var (
