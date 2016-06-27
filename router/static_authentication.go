@@ -6,12 +6,13 @@ import (
 	"net/url"
 
 	"github.com/gorilla/securecookie"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type staticAuthentication struct {
 	LoginPageHandlerURL string            `json:"login_page"`
 	SuccessPath         string            `json:"success"`
-	Credentials         map[string]string `json:"credentials"`
+	Credentials         map[string][]byte `json:"credentials"`
 	CookieSecret        string            `json:"cookie_secret"`
 	CookieName          string            `json:"cookie_name"`
 	securecookie        *securecookie.SecureCookie
@@ -76,8 +77,13 @@ func (a *staticAuthentication) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 //TODO: subject to timing attacks
 func (a *staticAuthentication) tryLogin(user string, pass string) bool {
-	userPass, hasUser := a.Credentials[user]
-	return hasUser && userPass == pass
+	passHash, hasUser := a.Credentials[user]
+	if !hasUser {
+		return false
+	}
+
+	return bcrypt.CompareHashAndPassword(passHash, []byte(pass)) == nil
+
 }
 
 func (a *staticAuthentication) authenticate(r *http.Request) bool {
