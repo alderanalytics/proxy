@@ -243,7 +243,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
+			query := req.URL.RawQuery
 			*req.URL = *handlerURL
+			req.URL.RawQuery = query
+
 			r.routeInternal(w, req)
 			return
 		}
