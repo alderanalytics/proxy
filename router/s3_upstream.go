@@ -35,6 +35,12 @@ func (s *s3Upstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer rc.Body.Close()
-	w.Header().Set("Content-Type", rc.Header.Get("Content-Type"))
+
+	for header, values := range rc.Header {
+		for _, value := range values {
+			w.Header().Add(header, value)
+		}
+	}
+
 	io.Copy(w, rc.Body)
 }
