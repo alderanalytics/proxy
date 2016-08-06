@@ -9,6 +9,7 @@ import (
 type httpUpstream struct {
 	URL          string      `json:"url"`
 	Headers      http.Header `json:"headers"`
+	PreserveHost bool        `json:"preserve_host"`
 	reverseProxy *httputil.ReverseProxy
 	hURL         *url.URL
 }
@@ -32,6 +33,9 @@ func (h *httpUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	r.Host = h.hURL.Host
+	if !h.PreserveHost {
+		r.Host = h.hURL.Host
+	}
+
 	h.reverseProxy.ServeHTTP(w, r)
 }
