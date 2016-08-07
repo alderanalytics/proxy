@@ -24,20 +24,25 @@ func main() {
 		log.Panicln(err)
 	}
 
-	cfg := &tls.Config{}
-
-	for _, cert := range router.Certificates() {
-		cfg.Certificates = append(cfg.Certificates, cert)
-	}
-
-	cfg.BuildNameToCertificate()
-
-	server := http.Server{
-		Addr:      router.BindAddress,
-		Handler:   router,
-		TLSConfig: cfg,
-	}
-
 	log.Printf("Binding %s\n", router.BindAddress)
-	log.Panicln(server.ListenAndServeTLS("", ""))
+	server := http.Server{
+		Addr:    router.BindAddress,
+		Handler: router,
+	}
+
+	if certs := router.Certificates(); len(certs) > 0 {
+
+		cfg := &tls.Config{}
+
+		for _, cert := range certs {
+			cfg.Certificates = append(cfg.Certificates, cert)
+		}
+
+		cfg.BuildNameToCertificate()
+		server.TLSConfig = cfg
+
+		log.Panicln(server.ListenAndServeTLS("", ""))
+	} else {
+		log.Panicln(server.ListenAndServe())
+	}
 }
