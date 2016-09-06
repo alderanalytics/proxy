@@ -19,6 +19,7 @@ const schemeHandler = "handler"
 var (
 	errInvalidHandlerURL               = fmt.Errorf("handler urls must use the handler scheme (i.e. %s://)", schemeHandler)
 	errPrivateRuleWithoutAuthenticator = errors.New("private rule without authenticator")
+	errDomainNotMatched                = errors.New("domain could not be matched")
 )
 
 type rule struct {
@@ -34,8 +35,10 @@ type domain struct {
 	TLSKeyFile         string  `json:"tls_key_file"`
 	Rules              []*rule `json:"rules"`
 	AuthenticatorName  string  `json:"authenticator"`
+	SessionName        string  `json:"session"`
 	certificate        tls.Certificate
 	auth               authenticator
+	sess               *session
 }
 
 type backends struct {
@@ -47,6 +50,7 @@ type Router struct {
 	BindAddress    string                          `json:"bind_address"`
 	CookieSecret   string                          `json:"cookie_secret"`
 	Backends       backends                        `json:"backends"`
+	Session        map[string]*session             `json:"session"`
 	Domains        map[string]*domain              `json:"domains"`
 	Authentication map[string]staticAuthentication `json:"authentication"`
 	handlers       map[string]http.Handler
@@ -110,6 +114,17 @@ func (r *Router) getAuthenticator(name string) (authenticator, error) {
 	return nil, fmt.Errorf("no authenticator named '%s'", name)
 }
 
+func (r *Router) getSession(name string) (*session, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if sess, ok := r.Session[name]; ok {
+		return sess, nil
+	}
+
+	return nil, fmt.Errorf("no session named '%s'", name)
+}
+
 func ruleError(domainName string, i int, err error) error {
 	return fmt.Errorf("(%s,rule:%d) %s", domainName, i+1, err)
 }
@@ -129,6 +144,10 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 		return nil, err
 	}
 
+	for _, sessDef := range r.Session {
+		sessDef.finalize()
+	}
+
 	for handlerName, s3def := range r.Backends.S3 {
 		s3def.finalize()
 		if err := r.addHandler(handlerName, s3def); err != nil {
@@ -137,7 +156,15 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 	}
 
 	for handlerName, httpDef := range r.Backends.HTTP {
-		if err := httpDef.finalize(); err != nil {
+		var sess *session
+
+		if httpDef.SessionName != "" {
+			if sess, err = r.getSession(httpDef.SessionName); err != nil {
+				return nil, handlerError(handlerName, err)
+			}
+		}
+
+		if err := httpDef.finalize(sess); err != nil {
 			return nil, handlerError(handlerName, err)
 		}
 
@@ -188,6 +215,12 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 			}
 		}
 
+		if domainDef.SessionName != "" {
+			if domainDef.sess, err = r.getSession(domainDef.SessionName); err != nil {
+				return nil, fmt.Errorf("domain '%s' references undefined session manager '%s'", domainName, domainDef.SessionName)
+			}
+		}
+
 		for i, ruleDef := range domainDef.Rules {
 			if !ruleDef.Public && domainDef.auth == nil {
 				return nil, ruleError(domainName, i, errPrivateRuleWithoutAuthenticator)
@@ -235,37 +268,60 @@ func (r *Router) routeInternal(w http.ResponseWriter, req *http.Request) {
 	handler.ServeHTTP(w, req)
 }
 
-func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	host, _, _ := splitHostPortOptional(req.Host)
-	domain, hasDomain := r.Domains[host]
+func (r *Router) getDomain(host string) (*domain, error) {
+	if domain, ok := r.Domains[host]; ok {
+		return domain, nil
+	}
 
-	if hasDomain {
-		for _, rule := range domain.Rules {
-			if !rule.regexp.MatchString(req.URL.Path) {
-				continue
-			}
-
-			if !rule.Public && !domain.auth.authenticate(req) {
-				continue
-			}
-
-			rawURL := rule.regexp.ReplaceAllString(req.URL.Path, rule.HandlerURL)
-			handlerURL, err := url.Parse(rawURL)
-			if err != nil {
-				internalServerError(w)
-				return
-			}
-
-			query := req.URL.RawQuery
-			*req.URL = *handlerURL
-			req.URL.RawQuery = query
-
-			r.routeInternal(w, req)
-			return
+	labels := strings.Split(host, ".")
+	for i := range labels {
+		labels[i] = "*"
+		host := strings.Join(labels, ".")
+		if domain, ok := r.Domains[host]; ok {
+			return domain, nil
 		}
 	}
 
-	http.NotFound(w, req)
+	return nil, errDomainNotMatched
+}
+
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	host, _, _ := splitHostPortOptional(req.Host)
+
+	domain, err := r.getDomain(host)
+	if err == errDomainNotMatched {
+		http.NotFound(w, req)
+		return
+	}
+
+	if err != nil {
+		internalServerError(w)
+		return
+	}
+
+	for _, rule := range domain.Rules {
+		if !rule.regexp.MatchString(req.URL.Path) {
+			continue
+		}
+
+		if !rule.Public && !domain.auth.authenticate(req) {
+			continue
+		}
+
+		rawURL := rule.regexp.ReplaceAllString(req.URL.Path, rule.HandlerURL)
+		handlerURL, err := url.Parse(rawURL)
+		if err != nil {
+			internalServerError(w)
+			return
+		}
+
+		query := req.URL.RawQuery
+		*req.URL = *handlerURL
+		req.URL.RawQuery = query
+
+		r.routeInternal(w, req)
+		return
+	}
 }
 
 func internalServerError(w http.ResponseWriter) {
