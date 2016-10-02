@@ -58,6 +58,7 @@ func (s *session) packStore(store sessionStore, w http.ResponseWriter) error {
 func (s *session) deleteStore(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:   s.CookieName,
+		Path:   "/",
 		MaxAge: -1,
 	})
 }

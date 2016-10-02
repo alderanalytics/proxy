@@ -1,7 +1,6 @@
 package router
 
 import (
-	"log"
 	"net/http"
 	"net/url"
 
@@ -52,7 +51,6 @@ func (a *staticAuthentication) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 
 	if r.Method == http.MethodPost {
-		log.Println("post")
 		if err := r.ParseForm(); err != nil {
 			internalServerError(w)
 			return
@@ -61,7 +59,6 @@ func (a *staticAuthentication) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		user := r.Form.Get("u")
 		pass := r.Form.Get("p")
 
-		log.Println(user, pass)
 		if a.tryLogin(user, pass) == true {
 			a.setCookie(w)
 			http.Redirect(w, r, a.SuccessPath, http.StatusSeeOther)
