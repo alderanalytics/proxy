@@ -47,12 +47,11 @@ type backends struct {
 }
 
 type Router struct {
-	BindAddress    string                          `json:"bind_address"`
-	CookieSecret   string                          `json:"cookie_secret"`
-	Backends       backends                        `json:"backends"`
-	Session        map[string]*session             `json:"session"`
-	Domains        map[string]*domain              `json:"domains"`
-	Authentication map[string]staticAuthentication `json:"authentication"`
+	BindAddress    string              `json:"bind_address"`
+	CookieSecret   string              `json:"cookie_secret"`
+	Backends       backends            `json:"backends"`
+	Session        map[string]*session `json:"session"`
+	Domains        map[string]*domain  `json:"domains"`
 	handlers       map[string]http.Handler
 	authenticators map[string]authenticator
 	mutex          sync.RWMutex
@@ -144,8 +143,11 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 		return nil, err
 	}
 
-	for _, sessDef := range r.Session {
+	for sessName, sessDef := range r.Session {
 		sessDef.finalize()
+		if sessDef.SessionAuthenticationKey != "" {
+			r.addAuthenticator(sessName, sessDef)
+		}
 	}
 
 	for handlerName, s3def := range r.Backends.S3 {
@@ -169,22 +171,6 @@ func NewRouterFromConfig(configFile string) (*Router, error) {
 		}
 
 		if err := r.addHandler(handlerName, httpDef); err != nil {
-			return nil, handlerError(handlerName, err)
-		}
-	}
-
-	for handlerName, authDef := range r.Authentication {
-		authDef.r = r
-
-		if err := authDef.finalize(); err != nil {
-			return nil, handlerError(handlerName, err)
-		}
-
-		if err := r.addAuthenticator(handlerName, &authDef); err != nil {
-			return nil, handlerError(handlerName, err)
-		}
-
-		if err := r.addHandler(handlerName, &authDef); err != nil {
 			return nil, handlerError(handlerName, err)
 		}
 	}
